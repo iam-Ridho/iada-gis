@@ -39,7 +39,7 @@ async def search_radius(lat: float = Query(..., description="Latitude pusat penc
 async def seed_dummy_data():
     """Insert data dummy untuk testing"""
     dummy_places = [
-        ("Lahan Padi Palaran", -0.48, 117.14, "pertanian", "padi", "Lahan padi 50ha", "alluvial"),
+        ("Lahan Padi Palaran", -0.6239, 117.1963, "pertanian", "padi", "Lahan padi 50ha", "alluvial"),
         ("Perkebunan Sawit Sambutan", -0.52, 117.12, "perkebunan", "kelapa_sawit", "Sawit mature", "latosol"),
         ("Lahan Jagung Sungai Kunjang", -0.50, 117.16, "pertanian", "jagung", "Jagung hibrida", "podsolik"),
         ("Kebun Kopi Samarinda Ulu", -0.55, 117.15, "perkebunan", "kopi", "Kopi arabika", "andosol"),
@@ -48,7 +48,7 @@ async def seed_dummy_data():
 
     inserted = []
     for place in dummy_places:
-        pid = db_service.insert_place(*place)
+        pid = db_service.insert_places(*place)
         inserted.append({"id": pid, "name": place[0]})
 
     return {
