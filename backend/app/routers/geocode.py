@@ -38,5 +38,5 @@ async def reverse_geocode(lat: float = Query(..., description="Latitude"), lon: 
         "found": True,
         "lat": lat,
         "lon": lon,
-        "adrress": address
+        "address": address
     }

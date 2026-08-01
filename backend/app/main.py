@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import os
 
-from app.routers import query, geocode, spatial, vector, pipeline
+from app.routers import query, geocode, spatial, vector, pipeline, chat, ingestion
 
 load_dotenv()
 
@@ -26,6 +26,8 @@ app.include_router(geocode.router, prefix="/api/v1", tags=["Geocoding"])
 app.include_router(spatial.router, prefix="/api/v1", tags=["Spatial"])
 app.include_router(vector.router, prefix="/api/v1", tags=["Vector"])
 app.include_router(pipeline.router, prefix="/api/v1", tags=["Pipeline"])
+app.include_router(chat.router, prefix="/api/v1", tags=["Chat"])
+app.include_router(ingestion.router, prefix="/api/v1", tags=["Ingestion"])
 
 @app.get("/")
 async def root():
@@ -35,7 +37,7 @@ async def root():
 async def health_check():
     return {
         "status": "healthy",
-        "version": "0.6.0",
+        "version": "0.8.0",
         "services": {
             "parser": "active",
             "geocoding": "active",

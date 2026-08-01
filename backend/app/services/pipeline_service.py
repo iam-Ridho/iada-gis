@@ -1,10 +1,12 @@
-from typing import List, Dict, Optional, Any
-from dataclasses import dataclass
+from typing import List, Dict, Optional
+from dataclasses import dataclass, field
+import time
 
 from app.services.database import db_service
 from app.services.chroma_service import chroma_service
 from app.services.geocode_service import geocode_service
 from app.services.query_parser import RegexQueryParser, QueryIntent
+from app.services.llm_service import llm_service
 
 @dataclass
 class Pipelineresult:
@@ -14,7 +16,12 @@ class Pipelineresult:
     spatial_results: List[Dict]
     vector_results: List[Dict]
     context: str
+    answer: str
     answer_ready: bool
+    model_used: str = "unknown"
+    processing_time_ms: int = 0
+    citations: List[Dict] = field(default_factory=list)
+    geo_json: Optional[Dict] = None
 
 class RAGPipeline:
     """Pipeline: Query -> parse -> geocode -> search(spatial + vector) -> context"""
@@ -33,7 +40,7 @@ class RAGPipeline:
             query: Pertanyaan user dalam bahasa alami
             user_location: Lokasi user (opsional), format {"lat": x, "lon": y}
         """
-
+        start_time = time.time()
         print(f"\n{'='*60}")
         print(f"Pipeline: '{query}'")
         print(f"{'='*60}")
@@ -70,7 +77,33 @@ class RAGPipeline:
             )
             print(f"Found: {len(spatial_results)} places")
 
-        # 4) Vector search
+        # 4) Query Polygon layer GIS
+        geo_json = None
+        if center_lat and center_lon:
+            print(f"\nQuerying GIS layers (polygon)...")
+            geo_query_start = time.time()
+            
+            preferred_layer_type = self._match_layer_type(intent.location) if intent.location else None
+            layer_results = self.spatial_db.query_intersecting_layers(
+                center_lat, center_lon, 
+                layer_type=preferred_layer_type,
+                radius_km=intent.radius_km,
+                max_results=10
+            )
+
+            if not layer_results and preferred_layer_type:
+                print(f"Tidak ada hasil untuk layer '{preferred_layer_type}', coba tanpa filter...")
+                layer_results = self.spatial_db.query_intersecting_layers(
+                    center_lat, center_lon, radius_km=intent.radius_km, max_results=10
+                )
+
+            geo_query_ms = int((time.time() - geo_query_start) * 1000)
+            print(f"Found: {len(layer_results)} intersecting layers ({geo_query_ms}ms)") 
+            if layer_results:
+                geo_json = self._build_geojson(layer_results)
+
+
+        # 5) Vector search
         print(f"\nVector search...")
         vector_query = self._build_vector_query(intent)
         vector_results = self.vector_db.search(vector_query, top_k=5)
@@ -78,6 +111,17 @@ class RAGPipeline:
 
         # 5) Context
         context = self._build_context(intent, spatial_results, vector_results)
+
+        # 6) LLM generate
+        print(f"\n Generating Answer....")
+        llm_start = time.time() 
+        llm_result = await llm_service.generate_answer(context, query)
+        llm_ms = int((time.time() - llm_start) * 1000)
+        answer = llm_result["answer"]
+        print(f" Answer generate ({len(answer)} chars, {llm_ms}ms)")
+
+        citations = self._extract_citations(vector_results)
+        elapsed_ms = int((time.time() - start_time) * 1000)
         
         return Pipelineresult(
             query_original=intent.raw_query,
@@ -86,9 +130,60 @@ class RAGPipeline:
             spatial_results=spatial_results,
             vector_results=vector_results,
             context=context,
-            answer_ready=True
+            answer=answer,
+            answer_ready=True,
+            model_used=llm_result.get("model", "unknown"),
+            processing_time_ms=elapsed_ms,
+            citations=citations,
+            geo_json=geo_json
         )
 
+    def _match_layer_type(self, location: str) -> Optional[str]:
+        """Cocokkan nama lokasi dengan layer_type yang ada (berdasarkan konvensi nama file shapefile)"""
+        if not location:
+            return None
+        
+        location_lower = location.lower().replace(' ', '_')
+        
+        # Mapping manual — sesuaikan dengan layer_type yang benar-benar ada di database
+        location_to_layer = {
+            'samarinda': 'kawasan_pertanian_kota_samarinda',
+            'kutai_barat': 'kawasan_pertanian_kutai_barat',
+            'kutai_kartanegara': 'kawasan_pertanian_kutai_kartanegara',
+            'kutai_timur': 'kawasan_pertanian_kutai_timur',
+        }
+        
+        for key, layer_type in location_to_layer.items():
+            if key in location_lower:
+                return layer_type
+        
+        return None
+
+    def _build_geojson(self, layer_results: List[Dict]) -> Dict:
+        """Gabungkan hasil query_intersecting_layers jadi FeatureCollection standar"""
+        import json
+
+        features = []
+        for row in layer_results:
+            try:
+                geometry = json.loads(row["geojson"])
+            except (KeyError, json.JSONDecodeError):
+                continue
+            
+            features.append({
+                "type" : "Feature",
+                "geometry" : geometry,
+                "properties" : {
+                    "id": row.get("id"),
+                    "name": row.get("name"),
+                    "layer_type": row.get("layer_type"),
+                    **(row.get("properties") or {})
+                }
+            })
+        return {
+            "type": "FeatureCollection",
+            "features": features
+        }
 
     def _build_vector_query(self, intent: QueryIntent) -> str:
         """Build query untuk vector search dari intent"""
@@ -113,7 +208,24 @@ class RAGPipeline:
             return str(intent.raw_query)
 
         return " ".join(parts)
-    
+
+    def _extract_citations(self, vector_results: List[Dict]) -> List[Dict]:
+        """ Ekstrak sumber unik dari hasil vector search """
+        citations = []
+        seen = set()
+
+        for d in vector_results:
+            meta = d.get('metadata', {}) if isinstance(d, dict) else {}
+            source = meta.get('source') or meta.get('file') or "Sumber tidak diketahui"
+            if source not in seen:
+                citations.append({
+                    "source": source,
+                    "type": meta.get("source_type", "unknown")
+                })
+                seen.add(source)
+
+        return citations
+
     def _build_context(self, intent: QueryIntent, spatial: List[Dict], vector: List[Dict]) -> str:
         lines = []
         lines.append("=" * 50)
@@ -138,7 +250,7 @@ class RAGPipeline:
             meta = d.get('metadata', {}) if isinstance(d, dict) else {}
             source = meta.get('source_type', '?') if isinstance(meta, dict) else '?'
             content = d.get('content', '') if isinstance(d, dict) else str(d)
-            lines.append(f"- [{source}] {str(content)[:100]}...")
+            lines.append(f"- [{source}] {str(content)[:500]}...")
 
         return "\n".join(lines)
     

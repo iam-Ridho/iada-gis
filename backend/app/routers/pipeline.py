@@ -19,8 +19,13 @@ class QueryResponse(BaseModel):
     spatial_count: int
     vector_count: int
     context: str
+    answer: str
+    model_used: str = "unknown"
+    processing_time_ms: Optional[int] = None
     places: List[Dict]
     documents: List[Dict]
+    citations: List[Dict] = []
+    geo_json: Optional[Dict] = None
 
 
 @router.post("/ask", response_model=QueryResponse)
@@ -55,8 +60,13 @@ async def ask(request: QueryRequest):
             spatial_count=len(result.spatial_results),
             vector_count=len(result.vector_results),
             context=result.context,
+            answer=result.answer,
+            model_used=result.model_used,
+            processing_time_ms=result.processing_time_ms,
             places=result.spatial_results,
-            documents=result.vector_results
+            documents=result.vector_results,
+            citations=result.citations,
+            geo_json=result.geo_json
         )
     
     except Exception as e:

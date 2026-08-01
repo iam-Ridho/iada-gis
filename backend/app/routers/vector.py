@@ -11,6 +11,7 @@ router = APIRouter()
 class SearchRequest(BaseModel):
     query: str
     top_k: int = 5
+    max_distance:float = 0.8
 
 @router.post("/ingest-dummy")
 async def ingest_dummy():
@@ -110,7 +111,7 @@ async def ingest_excel(file_path: str, text_columns: str = None, sheet_name: str
 @router.post("/search")
 async def search(request: SearchRequest):
     """Semantci search"""
-    result = chroma_service.search(request.query, request.top_k)
+    result = chroma_service.search(request.query, request.top_k, request.max_distance)
     return {
         "query": request.query,
         "results": result,

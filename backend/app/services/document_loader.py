@@ -6,6 +6,8 @@ from typing import List
 class DocumentLoader:
     """Load dokumen dari berbagai sumber"""
 
+    DATA_FOLDER = os.getenv("DATA_FOLDER", r"D:\iada_gis\backend\data")
+
     @staticmethod
     def load_dummy() -> List[Document]:
         """Data dummy untuk testing"""
@@ -99,12 +101,50 @@ class DocumentLoader:
             traceback.print_exc()
             return []
 
+    @staticmethod
+    def load_shapefile_for_postgis(shp_path: str, max_features: int = None) -> List[dict]:
+        """Load shapefile khusus untuk import ke PostGIS — return WKT + properties, bukan Document"""
+        import geopandas as gpd
+
+        if not os.path.exists(shp_path):
+            return []
+
+        gdf = gpd.read_file(shp_path)
+
+        if gdf.crs is not None and gdf.crs.to_epsg() != 4326:
+            gdf = gdf.to_crs(epsg=4326)
+
+        if max_features and len(gdf) > max_features:
+            gdf = gdf.head(max_features)
+
+        layer_type = os.path.splitext(os.path.basename(shp_path))[0]
+
+        records = []
+        for idx, row in gdf.iterrows():
+            geom = row['geometry']
+            if geom is None or not geom.is_valid:
+                continue
+
+            attrs = {k: str(v) for k, v in row.items() if k != 'geometry' and v and str(v) != 'nan'}
+            name = attrs.get('nama') or attrs.get('name') or f"{layer_type}_{idx}"
+
+            records.append({
+                "name": name,
+                "layer_type": layer_type,
+                "geom_wkt": geom.wkt,
+                "properties": attrs
+            })
+
+        return records
+
+
     # ===================== PDF =====================
     @staticmethod
     def load_pdf(file_path: str) -> List[Document]:
         """Load file PDF"""
         try:
             from langchain_community.document_loaders import PyPDFLoader
+            from langchain_text_splitters import RecursiveCharacterTextSplitter
 
             if not os.path.exists(file_path):
                 print(f"File tidak ditemukan: {file_path}")
@@ -113,12 +153,21 @@ class DocumentLoader:
             loader = PyPDFLoader(file_path)
             pages = loader.load()
 
-            for page in pages:
-                page.metadata["source_type"] = "pdf"
-                page.metadata["file"] = os.path.basename(file_path)
+            splitter = RecursiveCharacterTextSplitter(
+                chunk_size=1000,
+                chunk_overlap=200,
+                separators=["\n\n", "\n", ". ", " ", ""]
+            )
+            chunks = splitter.split_documents(pages)
 
-            print(f"PDF loaded: {len(pages)} halaman")
-            return pages
+            for chunk in chunks:
+                chunk.metadata.update({
+                    "source_type": "pdf",
+                    "file": os.path.basename(file_path),
+                    "folder": os.path.basename(os.path.dirname(file_path))
+                })
+
+            return chunks
 
         except ImportError as e:
             print(f"Error import library PDF: {e}")
@@ -247,3 +296,54 @@ class DocumentLoader:
         except Exception as e:
             print(f"Error load Excel: {e}")
             return []
+        
+    @staticmethod
+    def load_by_type(file_path: str, doc_type: str = None) -> List[Document]:
+        """Auto-detect type dan load"""
+        if doc_type is None:
+            ext = os.path.splitext(file_path)[1].lower()
+            type_map = {
+                '.pdf': 'pdf',
+                '.shp': 'shapefile',
+                '.csv': 'csv',
+                '.xlsx': 'excel',
+                '.xls': 'excel',
+                '.txt': 'dummy'
+            }
+            doc_type = type_map.get(ext, 'dummy')
+
+        loaders = {
+            'pdf': DocumentLoader.load_pdf,
+            'shapefile': DocumentLoader.load_shapefile,
+            'csv': DocumentLoader.load_csv,
+            'excel': DocumentLoader.load_excel,
+            'dummy': DocumentLoader.load_dummy
+        }
+
+        loader = loaders.get(doc_type)
+        if loader:
+            return loader(file_path) if doc_type != 'dummy' else loader()
+        
+        raise ValueError(f"Unsupported  type: {doc_type}")
+    
+    @staticmethod
+    def list_local_files() -> List[dict]:
+        """List Semua file di data folder"""
+        import glob
+
+        files = []
+        if not os.path.exists(DocumentLoader.DATA_FOLDER):
+            return files
+
+        patterns = ['**/*.shp', '**/*.pdf', '**/*.csv', '**/*.xlsx', '**/*.xls']
+        for pattern in patterns:
+            for path in glob.glob(os.path.join(DocumentLoader.DATA_FOLDER, pattern), recursive=True):
+                rel = os.path.relpath(path, DocumentLoader.DATA_FOLDER)
+                files.append({
+                    "name": os.path.basename(path),
+                    "relative_path": rel.replace("\\", "/"),
+                    "type": os.path.splitext(path)[1].lower().replace(".", ""),
+                    "size_mb": round(os.path.getsize(path) / 1024 / 1024, 2)
+                })
+
+        return files

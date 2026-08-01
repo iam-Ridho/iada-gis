@@ -61,7 +61,7 @@ class RegexQueryParser:
         'samarinda ulu', 'samarinda ilir', 'sungai kunjang', 'palaran', 
         'sambutan', 'loa janan', 'bengalon', 'sangatta', 'kutai kartanegara',
         'bontang', 'tanjung redeb', 'sendawar', 'melak', 'barong tongkok',
-        'muara badak', 'muara jawa', 'sepinggan', 'balikpapan',
+        'muara badak', 'muara jawa', 'sepinggan', 'balikpapan', 'samarinda'
     ]
 
     SKIP_WORDS = {
@@ -119,17 +119,10 @@ class RegexQueryParser:
                 return place.title()
 
         patterns = [
-            # "dari [Lokasi]" - capture sampai akhir atau stopword
-            r'dari\s+([a-z]+(?:\s+[a-z]+){0,2})(?=\s+(yang|dengan|untuk|area|radius|km|kilometer|$))',
-            
-            # "dekat [Lokasi]"
-            r'dekat\s+([a-z]+(?:\s+[a-z]+){0,2})(?=\s+(yang|dengan|untuk|area|radius|km|kilometer|$))',
-            
-            # "sekitar [Lokasi]"
-            r'sekitar\s+([a-z]+(?:\s+[a-z]+){0,2})(?=\s+(yang|dengan|untuk|area|radius|km|kilometer|$))',
-            
-            # "di [Lokasi]" - bisa 1-3 kata
-            r'di\s+([a-z]+(?:\s+[a-z]+){0,2})(?=\s+(yang|dengan|untuk|area|radius|km|kilometer|$))',
+            r'dari\s+([a-z]+(?:\s+[a-z]+){0,2})(?=\s+(?:yang|dengan|untuk|area|radius|km|kilometer)|$)',
+            r'dekat\s+([a-z]+(?:\s+[a-z]+){0,2})(?=\s+(?:yang|dengan|untuk|area|radius|km|kilometer)|$)',
+            r'sekitar\s+([a-z]+(?:\s+[a-z]+){0,2})(?=\s+(?:yang|dengan|untuk|area|radius|km|kilometer)|$)',
+            r'di\s+([a-z]+(?:\s+[a-z]+){0,2})(?=\s+(?:yang|dengan|untuk|area|radius|km|kilometer)|$)',
         ]
 
         for pattern in patterns:
@@ -139,7 +132,7 @@ class RegexQueryParser:
                 location = re.sub(r'\s+(yang|yg|dengan|dgn|untuk|utk)\s+.*$', '', location)
 
                 common_words = {
-                    'lahan', 'kebun', 'sawah', 'area', 'tempat', 'lokasi', 
+                    'lahan', 'kebun', 'sawah', 'area', 'tempat', 'lokasi',
                     'sini', 'sana', 'mana', 'budidaya', 'kelapa', 'cara',
                     'tentang', 'info', 'tentang', 'mau', 'ingin', 'butuh'
                 }
@@ -150,22 +143,7 @@ class RegexQueryParser:
                     continue
 
                 return location.title()
-            
-        # Fallback
-        words = query.split()
-        for i in range(len(words) - 1, -1, -1):
-            word = words[i]
-            clean = re.sub(r'[^\w]', '', word).lower()
-            if clean in self.SKIP_WORDS:
-                continue
 
-            if i > 0:
-                two_words = f"{words[i-1]} {word}".lower().strip()
-                if two_words in self.KNOWN_PLACES:
-                    return two_words.title()
-                
-            if len(clean) > 3:
-                return word.title()
         return None
             
     def _extract_radius(self, query: str) -> Optional[int]:

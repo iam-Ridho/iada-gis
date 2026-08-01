@@ -2,6 +2,7 @@ import chromadb
 import hashlib
 import uuid
 from chromadb.config import Settings
+from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 from langchain_core.documents import Document
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from typing import Dict, List
@@ -15,13 +16,18 @@ class ChromaService:
             settings= Settings(anonymized_telemetry=False)
         )
 
-        self.embeddings = HuggingFaceEmbeddings(
-            model_name = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+        # self.embeddings = HuggingFaceEmbeddings(
+        #     model_name = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+        # )
+
+        embedding_fn = SentenceTransformerEmbeddingFunction(
+            model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
         )
 
         self.collection = self.client.get_or_create_collection(
             name="agri_documents",
-            metadata={"hnsw:space": "cosine"}
+            metadata={"hnsw:space": "cosine"},
+            embedding_function=embedding_fn
         )
 
         print("Chroma service ready")
@@ -64,7 +70,7 @@ class ChromaService:
             "status": "success", "count": len(documents)
         }
     
-    def search(self, query: str, top_k: int = 5, max_distance: float = 1.5) -> List[Dict]:
+    def search(self, query: str, top_k: int = 5, max_distance: float = 0.8) -> List[Dict]:
         """Semantic search"""
         result = self.collection.query(
             query_texts=[query],

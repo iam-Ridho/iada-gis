@@ -9,8 +9,9 @@ class ChatRequest(BaseModel):
 class Citation(BaseModel):
     source: str
     url: Optional[str] = None
-    
-class ChatResponse(BaseModel):
-    answer: str
-    citations: List[Citation] = []
-    geo_json: Optional[dict] = None
+
+# NOT USED
+# class ChatResponse(BaseModel):
+#     answer: str
+#     citations: List[Citation] = []
+#     geo_json: Optional[dict] = None
