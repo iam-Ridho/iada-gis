@@ -388,9 +388,25 @@ Akses di browser:
 | `POST` | `/api/v1/search` | Semantic search dokumen |
 | `GET` | `/api/v1/stats` | Statistik ChromaDB |
 
+### 📦 Batch Ingestion
+
+| Method | Path | Deskripsi |
+|---|---|---|
+| `POST` | `/api/v1/batch-ingest?max_features_shp=500` | Ingest SEMUA file di folder `data/` sekaligus |
+| `GET` | `/api/v1/list-files` | Lihat daftar semua file yang tersedia di `data/` |
+
 ---
 
 ## 📂 Cara Ingest Data
+
+### ⚡ Batch Ingest Semua File (Recommended)
+```bash
+# Lihat dulu file apa yang ada
+curl http://localhost:8000/api/v1/list-files
+
+# Ingest semuanya sekaligus
+curl -X POST "http://localhost:8000/api/v1/batch-ingest?max_features_shp=500"
+```
 
 ### Ingest Data Dummy (untuk testing awal)
 ```bash
@@ -440,7 +456,7 @@ curl -X POST "http://localhost:8000/api/v1/ingest-csv?file_path=D:/iada_gis/data
 | ✅ RAG Pipeline Orchestrator | Selesai |
 | ✅ LLM Integration (Google Gemini) | Selesai |
 | ✅ Chat endpoint | Selesai |
-| ⚠️ Batch ingest | Sebagian — ada bug variabel `results` vs `result` |
+| ✅ Batch ingest (`/batch-ingest`, `/list-files`) | Selesai |
 | ⏳ OCR untuk PDF berbasis gambar | Library terinstall, belum diimplementasi |
 | ⏳ Frontend / Dashboard | Belum dimulai |
 | ⏳ Autentikasi & API Key | Belum dimulai |
@@ -451,10 +467,8 @@ curl -X POST "http://localhost:8000/api/v1/ingest-csv?file_path=D:/iada_gis/data
 
 ## 🐛 Known Issues
 
-1. **`batch_ingest.py`** — Variabel tidak konsisten (`result` vs `results`), fungsi `ingest_file()` belum selesai
-2. **`chat.py`** — Field `places_found` dan `documents_found` tipe `str` tapi return nilai `int`
-3. **PDF berbasis gambar** — Pytesseract & pdf2image sudah terinstall, belum diintegrasikan ke loader
-4. **DB init** — `database.py` raise error saat startup jika env vars tidak ada (bukan lazy initialization)
+1. **PDF berbasis gambar** — Pytesseract & pdf2image sudah terinstall, belum diintegrasikan ke loader
+2. **DB init** — `database.py` raise error saat startup jika env vars tidak ada (bukan lazy initialization)
 
 ---
 
