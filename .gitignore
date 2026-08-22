@@ -42,7 +42,7 @@ wheels/
 *.dump
 data/raw/
 data/processed/
-chroma_db/          # Vector DB local (bisa besar)
+chroma_db/
 *.sqlite3
 *.db
 
